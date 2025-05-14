@@ -7,6 +7,8 @@ import tensorflow as tf
 import numpy as np
 import pandas as pd
 from scipy.interpolate import CubicSpline      # for warping
+from sklearn.model_selection import train_test_split
+
 
 from sklearn.preprocessing import LabelBinarizer
 import matplotlib.pyplot as plt
@@ -19,12 +21,9 @@ else:
 
 # Normalize relative to the column mean
 def normalize_window(df):
-    df['X_x'] = (df['X_x'] - df['X_x'].mean()) / df['X_x'].astype(float).std()
-    df['Y_x'] = (df['Y_x'] - df['Y_x'].mean()) / df['Y_x'].astype(float).std()
-    df['Z_x'] = (df['Z_x'] - df['Z_x'].mean()) / df['Z_x'].astype(float).std()
-    df['X_y'] = (df['X_y'] - df['X_y'].mean()) / df['X_y'].astype(float).std()
-    df['Y_y'] = (df['Y_y'] - df['Y_y'].mean()) / df['Y_y'].astype(float).std()
-    df['Z_y'] = (df['Z_y'] - df['Z_y'].mean()) / df['Z_y'].astype(float).std()
+    for col in [['acc_x', 'acc_y', 'acc_z', 'gyro_x', 'gyro_y', 'gyro_z']]:
+        df[col] = (df[col] - df[col].mean()) / df[col].std()
+
 
 ## This example using cubic spline is not the best approach to generate random curves. 
 ## You can use other approaches, e.g., Gaussian process regression, Bezier curve, etc.
@@ -82,84 +81,70 @@ def augment(X, labels, jitter_sigma=0.01, scaling_sigma=0.05):
 
     return X_new
 
-def userBatches(accelFile, gyroFile, windowSize, stride, windows, vectorizedActivities, lb, labels): #processing Raw Data
-    print("... processing: " + accelFile.name + " and " + gyroFile.name)
-    accel = pd.read_csv(accelFile, names=['user id', 'Activity Label', 'Time Stamp', 'X', 'Y', 'Z'])
-    gyro = pd.read_csv(gyroFile, names=['user id', 'Activity Label', 'Time Stamp', 'X', 'Y', 'Z'])
-    accel['Z'] = accel['Z'].str[0: -1]
-    gyro['Z'] = gyro['Z'].str[0: -1]
+def userBatches(file, windowSize, stride, windows, vectorizedActivities, lb, labels): #processing Raw Data
 
+    # window array (empty) input, list of csv files
+    # for loop Iterate through all CSV files of labeled data
+        #  Reads CSV files
+        # for each activity, do window extraction
+            # create Window np array (subwindow)
+            # append subwindow to window
     for label in labels:
-        filt1 = accel.where(accel['Activity Label'].str.strip() == label).dropna().sort_values('Time Stamp').iloc[:, [3, 4, 5]]
-        filt2 = gyro.where(gyro['Activity Label'].str.strip() == label).dropna().sort_values('Time Stamp').iloc[:, [0, 3, 4, 5]]
-        merged = filt1.reset_index().merge(filt2.reset_index(), left_index=True, right_index=True, how='left').dropna()
-        merged = merged.drop(['index_x', 'index_y', 'user id'], axis=1)
-
-        for i in range(0, merged.shape[0] - windowSize, stride):
-            newWindow = merged.iloc[i:i + windowSize, :].astype(float)
+        df = pd.read_csv(file)
+        # print(f"Columns in file {file}: {df.columns.tolist()}")  # Print the column names to check
+        df.columns = df.columns.str.strip()
+        filter = df.where(df['label'].str.strip() == label).dropna().sort_values('timestamp').iloc[:, [7, 8, 9, 13, 14 ,15]] #acc_x, y, z, gyro_x, y, z
+        for i in range(0, filter.shape[0] - windowSize, stride):
+            newWindow = filter.iloc[i:i + windowSize, :].astype(float)
             normalize_window(newWindow)
             newWindow = newWindow.to_numpy().tolist()
             ctgrs = lb.transform([label]).tolist()[0]
             vectorizedActivities.append(ctgrs)
             windows.append(newWindow)
 
+
 def get_dataset(params: TrainParams, fine_tune=False):
-    if fine_tune:
-        aug_file = params.dataset_dir / params.augmented_ft_dataset  # Use pathlib's / operator to join paths
-    else:
-        aug_file = params.dataset_dir / params.augmented_dataset  # Use pathlib's / operator to join paths
+    aug_file = os.path.join(params.dataset_dir, params.augmented_dataset)
 
     if aug_file and os.path.isfile(aug_file):
         print("Loading augmented dataset from " + str(aug_file))
         ds = load_pkl(aug_file)
         return ds["X"], ds["y"], ds["XT"], ds["yt"]
 
-    if fine_tune:
-        processed_file = params.dataset_dir / params.processed_ft_dataset  # Use pathlib's / operator to join paths
-    else:
-        processed_file = params.dataset_dir / params.processed_dataset  # Use pathlib's / operator to join paths
+    processed_file = os.path.join(params.dataset_dir, params.processed_dataset)
 
     if not os.path.isfile(processed_file):
         print("Creating processed dataset. This may take a few minutes...")
 
-        if fine_tune:
-            accelDirs = list(os.scandir(params.dataset_dir / 'accel_finetune'))
-            gyroDirs = list(os.scandir(params.dataset_dir / 'gyro_finetune'))
-        else:
-            accelDirs = list(os.scandir(params.dataset_dir / 'accel'))
-            gyroDirs = list(os.scandir(params.dataset_dir / 'gyro'))
 
-        # del accelDirs[37:41]
-        # del gyroDirs[37:41]
-        allDirs = list(zip(accelDirs, gyroDirs))
-        # training_files_count = round(len(accelDirs) * params.training_dataset_percent / 100)
-        # trainingIndices = np.random.choice(len(allDirs), training_files_count, replace=False).tolist()
-        # trainingDirs = [allDirs[i] for i in range(len(allDirs)) if i in trainingIndices]
-        # testDirs = [x for x in allDirs if x not in trainingDirs]
-        trainingDirs = allDirs
-        testDirs = allDirs
+        dataDir = list(os.scandir(Path(params.dataset_dir) / 'raw_data'))
 
-        labels = ['A', 'B', 'C']
+
+        labels = ['standing_still', 'walking_forward', 'running_forward', 'climb_up', 'climb_down']
         lb = LabelBinarizer()
         lb.fit(labels)
+        
+        X = []
+        Y = []
 
-        aug_X = []
-        aug_y = []
-        testX = []
-        testy = []
+        for file in dataDir:
+            userBatches(file, params.num_time_steps, params.sample_step, X, Y, lb, labels)
 
-        print("Creating batches by moving a sampling window over user data.")
-        for accelFile, gyroFile in trainingDirs:
-            userBatches(accelFile, gyroFile, params.num_time_steps, params.sample_step, aug_X, aug_y, lb, labels)
-        for accelFile, gyroFile in testDirs:
-            userBatches(accelFile, gyroFile, params.num_time_steps, params.sample_step, testX, testy, lb, labels)
+        # Convert and reshape
+        X = np.asarray(X, dtype=np.float32).reshape(-1, params.num_time_steps, params.num_features)
+        Y = np.asarray(Y, dtype=np.float32)
 
-        aug_y = np.asarray(aug_y, dtype=np.float32)
+        # Perform a 70/30 split
+        aug_X, testX, aug_y, testy = train_test_split(X, Y, test_size=0.3, random_state=42, stratify=Y)
+
+        # Optional reshaping and type conversion
         aug_X = np.asarray(aug_X, dtype=np.float32).reshape(-1, params.num_time_steps, params.num_features)
+        aug_y = np.asarray(aug_y, dtype=np.float32)
         testX = np.asarray(testX, dtype=np.float32).reshape(-1, params.num_time_steps, params.num_features)
         testy = np.asarray(testy, dtype=np.float32)
 
         save_pkl(processed_file, X=aug_X, y=aug_y, XT=testX, yt=testy)
+
         if params.augmentations == 0:
             return aug_X, aug_y, testX, testy
     else:
@@ -169,6 +154,7 @@ def get_dataset(params: TrainParams, fine_tune=False):
         aug_y = ds["y"]
         testX = ds["XT"]
         testy = ds["yt"]
+
         if params.augmentations == 0:
             return aug_X, aug_y, testX, testy
 
@@ -188,4 +174,3 @@ def get_dataset(params: TrainParams, fine_tune=False):
         save_pkl(aug_file, X=aug_X, y=aug_y, XT=orig_testX, yt=orig_testy)
 
     return aug_X, aug_y, orig_testX, orig_testy
-    #aug_data, aug_labels, test_data, test_labels

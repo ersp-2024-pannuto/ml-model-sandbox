@@ -15,13 +15,13 @@ import tensorflow_model_optimization as tfmot
 
 import matplotlib.pyplot as plt
 from keras import regularizers as reg
+
 RANDOM_SEED = 42
 
 if sys.platform == "darwin":
     Adam = tf.keras.optimizers.legacy.Adam
 else:
     Adam = tf.keras.optimizers.Adam
-
 
 def create_parser():
     """Create CLI argument parser
@@ -35,20 +35,26 @@ def create_parser():
     )
 
 def decay(epoch):
-        if epoch < 5:
-            return 1e-3
-        if epoch < 15:
-            return 1e-4
-        if epoch < 30:
-            return 1e-5
-        return 1e-6
+    if epoch < 5:
+        return 1e-3
+    if epoch < 15:
+        return 1e-4
+    if epoch < 30:
+        return 1e-5
+    return 1e-6
 
 def decay_ft(epoch):
-        return 1e-6
+    return 1e-6
 
 
 import datetime
 
+import os
+import datetime
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn import metrics
 
 def plot_training_results(model, history, test_data, test_labels, output_dir="plots"):
     """
@@ -67,9 +73,9 @@ def plot_training_results(model, history, test_data, test_labels, output_dir="pl
     # Create timestamp for unique filenames
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    # Label configuration
-    EXPECTED_LABELS = ['A', 'B', 'C']
-    DISPLAY_LABELS = ['STOP', 'WALK', 'TURN_BACK']
+    # Label configuration (expected classes)
+    EXPECTED_LABELS = ['standing_still', 'walking_forward', 'running_forward', 'climb_up', 'climb_down']
+    DISPLAY_LABELS = ['STAND', 'WALK', 'RUN', 'CLIMB UP', 'CLIMB DOWN']
 
     # Predictions and true labels
     y_pred_test = model.predict(test_data, verbose=0)
@@ -79,13 +85,14 @@ def plot_training_results(model, history, test_data, test_labels, output_dir="pl
     # Confusion matrix (full version)
     full_matrix = metrics.confusion_matrix(max_y_test, max_y_pred_test)
 
+    # Try plotting confusion matrix using the display labels
     try:
         matrix = metrics.confusion_matrix(
             max_y_test,
             max_y_pred_test,
             labels=range(len(DISPLAY_LABELS))
         )
-        plt.figure(figsize=(4, 4))
+        plt.figure(figsize=(6, 6))  # Adjusted size for clarity
         sns.heatmap(matrix, cmap='Blues', linecolor='white', linewidths=1,
                     xticklabels=DISPLAY_LABELS, yticklabels=DISPLAY_LABELS, annot=True, fmt='d')
         plt.title('Confusion Matrix')
@@ -95,7 +102,8 @@ def plot_training_results(model, history, test_data, test_labels, output_dir="pl
         plt.savefig(os.path.join(output_dir, f"confusion_matrix_{timestamp}.png"))
         plt.close()
     except Exception as e:
-        print(f"Error creating 3x3 confusion matrix: {e}")
+        print(f"Error creating confusion matrix: {e}")
+        # In case of error, fallback to full matrix without specific labels
         labels = [f"Class {i}" for i in range(full_matrix.shape[0])]
         plt.figure(figsize=(6, 6))
         sns.heatmap(full_matrix, cmap='Blues', linecolor='white', linewidths=1,
@@ -131,7 +139,7 @@ def plot_training_results(model, history, test_data, test_labels, output_dir="pl
     if 'mean_absolute_error' in history.history:
         plt.plot(history.history['mean_absolute_error'])
         plt.plot(history.history['val_mean_absolute_error'])
-        plt.title('Mean Absolute Error')
+        plt.title('Mean Absolute Error (MAE)')
         plt.ylabel('MAE')
         plt.xlabel('Epoch')
         plt.legend(['Train', 'Test'], loc='upper left')
@@ -140,20 +148,15 @@ def plot_training_results(model, history, test_data, test_labels, output_dir="pl
 
 
 
-def train_model(params: TrainParams, train_data, train_labels, test_data, test_labels, fine_tune = False):
+def train_model(params: TrainParams, train_data, train_labels, test_data, test_labels):
     # Initialize Hyperparameters
     verbose = 1
-
-    if fine_tune:
-        epochs = params.ft_epochs
-    else:
-        epochs = params.epochs
-
+    epochs = params.epochs
     batch_size = params.batch_size
 
-    n_timesteps = aug_data.shape[1]
-    n_features = aug_data.shape[2]
-    n_outputs = aug_labels.shape[1]
+    n_timesteps = train_data.shape[1]
+    n_features = train_data.shape[2]
+    n_outputs = train_labels.shape[1]
 
     print('[INFO] n_timesteps : ', n_timesteps)
     print('[INFO] n_features : ', n_features)
@@ -180,24 +183,17 @@ def train_model(params: TrainParams, train_data, train_labels, test_data, test_l
     )
 
     tf_logger = tf.keras.callbacks.CSVLogger(str(params.job_dir) + "/history.csv")
-
-    if fine_tune:
-        lr_scheduler = tf.keras.callbacks.LearningRateScheduler(decay_ft)
-    else:
-        lr_scheduler = tf.keras.callbacks.LearningRateScheduler(decay)
+    lr_scheduler = tf.keras.callbacks.LearningRateScheduler(decay)
 
     model_callbacks = [early_stopping, checkpoint, tf_logger, lr_scheduler]
 
     # Model
-    if fine_tune:
-        model = load_existing_model(params)
-    else:
-        model = define_model(n_timesteps, n_features, n_outputs)
+    model = define_model(n_timesteps, n_features, n_outputs)
     
     model.summary()
 
     # fit network
-    history = model.fit(aug_data, aug_labels, validation_data=(test_data, test_labels), 
+    history = model.fit(train_data, train_labels, validation_data=(test_data, test_labels), 
                         epochs=epochs, batch_size=batch_size, verbose=verbose, callbacks=model_callbacks,)
 
     # evaluate model
@@ -207,30 +203,20 @@ def train_model(params: TrainParams, train_data, train_labels, test_data, test_l
     
     return model, history
 
-
 if __name__ == "__main__":
     parser = create_parser()
     params = parser.parse_typed_args()
     set_random_seed(params.seed)
     # Load Baseline Data
-    aug_data, aug_labels, test_data, test_labels = get_dataset(params, False)
+    aug_data, aug_labels, test_data, test_labels = get_dataset(params, fine_tune=False)
 
-    # Load Fine-tune Data
-    ft_aug_data, ft_aug_labels, ft_test_data, ft_test_labels = get_dataset(params, True)
-    
     # Train model
     if params.train_model:
-        model, history = train_model(params, aug_data, aug_labels, test_data, test_labels, fine_tune=False)
+        model, history = train_model(params, aug_data, aug_labels, test_data, test_labels)
         if params.show_training_plot:
             plot_training_results(model, history, test_data, test_labels)
     else:
         model = load_existing_model(params)
-
-    # Fine-tune model
-    if params.fine_tune_model:
-        model, history = train_model(params, ft_aug_data, ft_aug_labels, ft_test_data, ft_test_labels, fine_tune=True)
-        if params.show_training_plot:
-            plot_training_results(model, history, ft_test_data, ft_test_labels)
 
     # Quantize and convert
     tflite_filename = params.trained_model_dir / f"{params.model_name}.tflite"
