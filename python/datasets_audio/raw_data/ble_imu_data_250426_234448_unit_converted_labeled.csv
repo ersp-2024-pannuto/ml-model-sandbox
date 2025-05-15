@@ -1,1 +1,0 @@
-timestamp,android_nano_timestamp,temperature,calib_mag,calib_accel,calib_gyro,calib_sys,acc_x,acc_y,acc_z,lacc_x,lacc_y,lacc_z,gyro_x,gyro_y,gyro_z,quat_w,quat_x,quat_y,quat_z,mag_x,mag_y,mag_z,gravity_x,gravity_y,gravity_z,label

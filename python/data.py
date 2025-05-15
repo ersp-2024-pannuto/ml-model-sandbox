@@ -94,7 +94,13 @@ def userBatches(file, windowSize, stride, windows, vectorizedActivities, lb, lab
         df = pd.read_csv(file)
         # print(f"Columns in file {file}: {df.columns.tolist()}")  # Print the column names to check
         df.columns = df.columns.str.strip()
-        filter = df.where(df['label'].str.strip() == label).dropna().sort_values('timestamp').iloc[:, [7, 8, 9, 13, 14 ,15]] #acc_x, y, z, gyro_x, y, z
+        columns_to_keep = ['acc_x', 'acc_y', 'acc_z', 'gyro_x', 'gyro_y', 'gyro_z']
+        filter = (
+            df.where(df['label'].str.strip() == label)
+              .dropna()
+              .sort_values('timestamp')
+              [columns_to_keep]
+        )
         for i in range(0, filter.shape[0] - windowSize, stride):
             newWindow = filter.iloc[i:i + windowSize, :].astype(float)
             normalize_window(newWindow)
