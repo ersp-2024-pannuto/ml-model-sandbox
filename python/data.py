@@ -123,7 +123,7 @@ def get_dataset(params: TrainParams, fine_tune=False):
             if entry.name != ".DS_Store"
         ]
 
-
+        # when the button data is extracted, the labels are mapped
         labels = ['standing_still', 'walking_forward', 'running_forward', 'climb_up', 'climb_down']
         lb = LabelBinarizer()
         lb.fit(labels)
