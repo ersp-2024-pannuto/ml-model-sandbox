@@ -1,3 +1,14 @@
+# Running with Our Own data
+
+```bash
+# use audio data
+python3.10 train.py --dataset-dir ./datasets_audio
+
+# use button data
+python3.10 train.py --dataset-dir ./datasets_button
+```
+
+
 # Dataset
 
 Instead of gathering live sensor readings, we relied on a public dataset [dataset](https://www.cis.fordham.edu/wisdm/dataset.php).

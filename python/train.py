@@ -148,14 +148,21 @@ def plot_training_results(model, history, test_data, test_labels, output_dir="pl
 
 
 
-def train_model(params: TrainParams, train_data, train_labels, test_data, test_labels):
+def train_model(params: TrainParams, train_data, train_labels, test_data, test_labels, fine_tune = False):
     # Initialize Hyperparameters
     verbose = 1
-    epochs = params.epochs
-    batch_size = params.batch_size
 
+    if fine_tune:
+        epochs = params.ft_epochs
+    else:
+        epochs = params.epochs
+
+    batch_size = params.batch_size
+    
+    # window size
     n_timesteps = train_data.shape[1]
     n_features = train_data.shape[2]
+    # number of labels
     n_outputs = train_labels.shape[1]
 
     print('[INFO] n_timesteps : ', n_timesteps)
@@ -172,7 +179,7 @@ def train_model(params: TrainParams, train_data, train_labels, test_data, test_l
             restore_best_weights=True,
         )
 
-    checkpoint_weight_path = str(params.job_dir) + "/model.h5"
+    checkpoint_weight_path = os.path.join(str(params.job_dir),"model.keras")
     checkpoint = tf.keras.callbacks.ModelCheckpoint(
         filepath=checkpoint_weight_path,
         monitor="val_loss",
@@ -182,47 +189,73 @@ def train_model(params: TrainParams, train_data, train_labels, test_data, test_l
         verbose=1,
     )
 
-    tf_logger = tf.keras.callbacks.CSVLogger(str(params.job_dir) + "/history.csv")
-    lr_scheduler = tf.keras.callbacks.LearningRateScheduler(decay)
+    tf_logger = tf.keras.callbacks.CSVLogger(os.path.join(str(params.job_dir),"history.csv"))
+
+    if fine_tune:
+        lr_scheduler = tf.keras.callbacks.LearningRateScheduler(decay_ft)
+    else:
+        lr_scheduler = tf.keras.callbacks.LearningRateScheduler(decay)
 
     model_callbacks = [early_stopping, checkpoint, tf_logger, lr_scheduler]
 
     # Model
-    model = define_model(n_timesteps, n_features, n_outputs)
-    
+    if fine_tune:
+        model = load_existing_model(os.path.join(params.trained_model_dir, f"{params.model_name}.keras"))
+    else:
+        model = define_model(n_timesteps, n_features, n_outputs)
+
     model.summary()
 
     # fit network
-    history = model.fit(train_data, train_labels, validation_data=(test_data, test_labels), 
+    history = model.fit(train_data, train_labels, validation_data=(test_data, test_labels),
                         epochs=epochs, batch_size=batch_size, verbose=verbose, callbacks=model_callbacks,)
 
     # evaluate model
     (loss, accuracy, mae) = model.evaluate(test_data, test_labels, batch_size=batch_size, verbose=verbose)
-    model.save(params.trained_model_dir / f"{params.model_name}.h5")
-    print("[INFO] loss={:.4f}, accuracy: {:.4f}%, mean absolute error={:.4f}%".format(loss, accuracy * 100, mae))
     
+    if not fine_tune:
+        model.save(os.path.join(params.trained_model_dir, f"{params.model_name}.keras"))
+    else:
+        model.save(os.path.join(params.trained_model_dir, f"{params.ft_model_name}.keras"))
+
+    print("[INFO] loss={:.4f}, accuracy: {:.4f}%, mean absolute error={:.4f}%".format(loss, accuracy * 100, mae))
+
     return model, history
 
 if __name__ == "__main__":
     parser = create_parser()
     params = parser.parse_typed_args()
     set_random_seed(params.seed)
-    # Load Baseline Data
-    aug_data, aug_labels, test_data, test_labels = get_dataset(params, fine_tune=False)
 
+    # Load dataset
+    aug_train_data, aug_train_labels, aug_test_data, aug_test_labels = get_dataset(params, False)
+
+    # Load Fine-tune data
+    ft_aug_train_data, ft_aug_train_labels, ft_aug_test_data, ft_aug_test_labels = get_dataset(params, True)
+
+    # default
+    #model_name = params.base_model_name
     # Train model
     if params.train_model:
-        model, history = train_model(params, aug_data, aug_labels, test_data, test_labels)
+        model, history = train_model(params, aug_train_data, aug_train_labels, aug_test_data, aug_test_labels, fine_tune=False)
         if params.show_training_plot:
-            plot_training_results(model, history, test_data, test_labels)
+            plot_training_results(model, history, test_data=aug_test_data, test_labels=aug_test_labels)
     else:
-        model = load_existing_model(params)
+        model = load_existing_model(os.path.join(params.trained_model_dir, f"{params.model_name}.keras"))
 
+    # Fine-tune model
+    if params.fine_tune_model:
+        #model_name = params.ft_model_name
+        model, history = train_model(params, ft_aug_train_data, ft_aug_train_labels, ft_aug_test_data, ft_aug_test_labels, fine_tune=True)
+        if params.show_training_plot:
+            plot_training_results(model, history, test_data=ft_aug_test_data, test_labels=ft_aug_test_labels)
+
+"""
     # Quantize and convert
-    tflite_filename = params.trained_model_dir / f"{params.model_name}.tflite"
-    tflm_filename = params.trained_model_dir / f"{params.model_name}.cc"
+    tflite_filename = os.path.join(params.trained_model_dir,f"{params.model_name}.tflite")
+    tflm_filename = os.path.join(params.trained_model_dir,f"{params.model_name}.cc")
 
-    X_rep = train_test_split(aug_data, aug_labels, test_size=0.2, random_state=params.seed)[1]
+    X_rep = train_test_split(aug_train_data, aug_train_labels, test_size=0.1, random_state=params.seed)[1]
 
     def representative_dataset():
         yield [X_rep.astype('float32')]    # TODO get better dataset, but aug_data is too large
@@ -234,37 +267,16 @@ if __name__ == "__main__":
     converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
     converter.target_spec.supported_types = [tf.int8]
     converter.inference_type = tf.int8
-    converter.inference_input_type = tf.int8 
+    converter.inference_input_type = tf.int8
     converter.inference_output_type = tf.int8
     tflite_quant_model = converter.convert()
     print("[INFO] Size of Quantized Model: " + str(len(tflite_quant_model)))
+
+    # save binary
     with open(tflite_filename, 'wb') as f:
         f.write(tflite_quant_model)
-    
-    # Evaluate tflite model
-    interpreter = tf.lite.Interpreter(model_path=str(tflite_filename))
-    interpreter.allocate_tensors() 
-    input_details = interpreter.get_input_details()
-    output_details = interpreter.get_output_details()
 
-    input_scale, input_zero_point = input_details[0]["quantization"]
-    output_scale, output_zero_point = output_details[0]["quantization"]
-
-    accurate = 0
-    X_test_int8 = np.asarray(test_data/input_scale + input_zero_point, dtype=np.int8)
-    for i in range(len(test_data)):
-        X_test_int8_sample = np.array([X_test_int8[i]])
-
-        interpreter.set_tensor(input_details[0]['index'], X_test_int8_sample)
-        interpreter.invoke()
-
-        outputCategories = np.asarray(interpreter.get_tensor(output_details[0]['index']), dtype=np.float32)
-        Categories = (outputCategories - output_zero_point) * output_scale
-        if (np.argmax(Categories[0]) == np.argmax(test_labels[i])):
-            accurate += 1
-    print(str(accurate/len(test_labels) * 100) + " % Quantized Accuracy on the test set")
-    
-    # Generate C from tflite
+    # Generate the .cc file from tflite
     xxd_c_dump(
         src_path=tflite_filename,
         dst_path=tflm_filename,
@@ -272,3 +284,11 @@ if __name__ == "__main__":
         chunk_len=12,
         is_header=True,
     )
+
+    if params.fine_tune_model:
+        print("evaluating tflite model on fine-tune data")
+        eval_tflite(tflite_filename, tflm_filename, test_data = ft_aug_test_data, test_labels = ft_aug_test_labels)
+    else:
+        print("evaluating tflite model on base data")
+        eval_tflite(tflite_filename, tflm_filename, test_data = aug_test_data, test_labels = aug_test_labels)
+"""

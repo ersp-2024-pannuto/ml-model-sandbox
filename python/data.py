@@ -82,6 +82,7 @@ def augment(X, labels, jitter_sigma=0.01, scaling_sigma=0.05):
     return X_new
 
 def userBatches(file, windowSize, stride, windows, vectorizedActivities, lb, labels): #processing Raw Data
+    print(file)
 
     # window array (empty) input, list of csv files
     # for loop Iterate through all CSV files of labeled data
@@ -117,7 +118,10 @@ def get_dataset(params: TrainParams, fine_tune=False):
         print("Creating processed dataset. This may take a few minutes...")
 
 
-        dataDir = list(os.scandir(Path(params.dataset_dir) / 'raw_data'))
+        dataDir = [
+            entry for entry in os.scandir(os.path.join(params.dataset_dir, "raw_data"))
+            if entry.name != ".DS_Store"
+        ]
 
 
         labels = ['standing_still', 'walking_forward', 'running_forward', 'climb_up', 'climb_down']
