@@ -3,9 +3,14 @@
 ```bash
 # use audio data
 python3.10 train.py --dataset-dir ./datasets_audio
+# user based split
+python3.10 train.py --dataset-dir ./datasets_audio --split-method 2
+
 
 # use button data
 python3.10 train.py --dataset-dir ./datasets_button
+# user based split
+python3.10 train.py --dataset-dir ./datasets_button --split-method 2
 ```
 
 
