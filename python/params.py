@@ -28,4 +28,5 @@ class TrainParams(BaseModel):
     train_model: bool = Field(True, description="Train the model, otherwise load existing model")
     fine_tune_model: bool = Field(False, description="Fine-tune the model, otherwise load existing model")
     split_method: int = Field(2, description="How to split: 1, random; 2, user-based")
+    down_sample_hz: int = Field(-1, discription="target down sampling rate")
 

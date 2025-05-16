@@ -81,7 +81,7 @@ def augment(X, labels, jitter_sigma=0.01, scaling_sigma=0.05):
 
     return X_new
 
-def userBatches(file, windowSize, stride, windows, vectorizedActivities, lb, labels): #processing Raw Data
+def userBatches(file, windowSize, stride, windows, vectorizedActivities, lb, labels, down_sample_hz = -1): #processing Raw Data
     print(file)
 
     # window array (empty) input, list of csv files
@@ -92,6 +92,9 @@ def userBatches(file, windowSize, stride, windows, vectorizedActivities, lb, lab
             # append subwindow to window
     for label in labels:
         df = pd.read_csv(file)
+        if down_sample_hz!=-1:
+            down_sample_spacing = 100//down_sample_hz
+            df = df.iloc[::down_sample_spacing].reset_index(drop=True)
         # print(f"Columns in file {file}: {df.columns.tolist()}")  # Print the column names to check
         df.columns = df.columns.str.strip()
         columns_to_keep = ['acc_x', 'acc_y', 'acc_z', 'gyro_x', 'gyro_y', 'gyro_z']
@@ -136,12 +139,13 @@ def get_dataset(params: TrainParams, fine_tune=False):
         lb.fit(labels)
         # the labels will be sorted
         print(lb.classes_)
+
         if params.split_method == 1:
             #random split
             X = []
             Y = []
             for file in data_files:
-                userBatches(file, params.num_time_steps, params.sample_step, X, Y, lb, labels)
+                userBatches(file, params.num_time_steps, params.sample_step, X, Y, lb, labels, down_sample_hz = params.down_sample_hz)
 
             # Convert and reshape
             X = np.asarray(X, dtype=np.float32).reshape(-1, params.num_time_steps, params.num_features)
@@ -173,11 +177,11 @@ def get_dataset(params: TrainParams, fine_tune=False):
 
             for user in train_users:
                 for file_entry in user_to_files[user]:
-                    userBatches(file_entry, params.num_time_steps, params.sample_step, X_train, Y_train, lb, labels)
+                    userBatches(file_entry, params.num_time_steps, params.sample_step, X_train, Y_train, lb, labels, down_sample_hz = params.down_sample_hz)
 
             for user in test_users:
                 for file_entry in user_to_files[user]:
-                    userBatches(file_entry, params.num_time_steps, params.sample_step, X_test, Y_test, lb, labels)
+                    userBatches(file_entry, params.num_time_steps, params.sample_step, X_test, Y_test, lb, labels, down_sample_hz = params.down_sample_hz)
 
         # Optional reshaping and type conversion
         X_train = np.asarray(X_train, dtype=np.float32).reshape(-1, params.num_time_steps, params.num_features)
