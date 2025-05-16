@@ -9,6 +9,16 @@ python3.10 train.py --dataset-dir ./datasets_button
 ```
 
 
+getting unique labels from button data (to check if there is any unmapped labels)
+```bash
+awk -F, 'NR==1 {for (i=1; i<=NF; i++) if ($i=="label") label_col=i} NR>1 && label_col {print $label_col}' *.csv | sort | uniq
+```
+
+counting labels in the datasets
+```bash
+awk -F, 'NR==1 {for (i=1; i<=NF; i++) if ($i=="label") label_col=i} NR>1 && label_col {print $label_col}' *.csv | sort | uniq -c | sort -nr
+```
+
 # Dataset
 
 Instead of gathering live sensor readings, we relied on a public dataset [dataset](https://www.cis.fordham.edu/wisdm/dataset.php).
