@@ -15,6 +15,7 @@ import tensorflow_model_optimization as tfmot
 
 import matplotlib.pyplot as plt
 from keras import regularizers as reg
+import collections
 
 RANDOM_SEED = 42
 
@@ -206,6 +207,28 @@ def train_model(params: TrainParams, train_data, train_labels, test_data, test_l
 
     model.summary()
 
+    # Convert one-hot labels to integer class indices
+    if len(train_labels.shape) > 1:
+        train_label_indices = np.argmax(train_labels, axis=1)
+    else:
+        train_label_indices = train_labels
+
+    if len(test_labels.shape) > 1:
+        test_label_indices = np.argmax(test_labels, axis=1)
+    else:
+        test_label_indices = test_labels
+
+    # Count labels
+    train_label_counts = collections.Counter(train_label_indices)
+    test_label_counts = collections.Counter(test_label_indices)
+
+    # Output info
+    print(f"Number of train samples: {len(train_label_indices)}")
+    print(f"Train label distribution: {dict(train_label_counts)}")
+
+    print(f"Number of test samples: {len(test_label_indices)}")
+    print(f"Test label distribution: {dict(test_label_counts)}")
+
     # fit network
     history = model.fit(train_data, train_labels, validation_data=(test_data, test_labels),
                         epochs=epochs, batch_size=batch_size, verbose=verbose, callbacks=model_callbacks,)
@@ -225,7 +248,7 @@ def train_model(params: TrainParams, train_data, train_labels, test_data, test_l
 if __name__ == "__main__":
     parser = create_parser()
     params = parser.parse_typed_args()
-    set_random_seed(params.seed)
+    #set_random_seed(params.seed)
 
     # Load dataset
     aug_train_data, aug_train_labels, aug_test_data, aug_test_labels = get_dataset(params, False)

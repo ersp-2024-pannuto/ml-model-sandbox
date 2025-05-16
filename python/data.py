@@ -95,14 +95,15 @@ def userBatches(file, windowSize, stride, windows, vectorizedActivities, lb, lab
         # print(f"Columns in file {file}: {df.columns.tolist()}")  # Print the column names to check
         df.columns = df.columns.str.strip()
         columns_to_keep = ['acc_x', 'acc_y', 'acc_z', 'gyro_x', 'gyro_y', 'gyro_z']
-        filter = (
+        filtered = (
             df.where(df['label'].str.strip() == label)
               .dropna()
               .sort_values('timestamp')
               [columns_to_keep]
         )
-        for i in range(0, filter.shape[0] - windowSize, stride):
-            newWindow = filter.iloc[i:i + windowSize, :].astype(float)
+        #print(f"File: {file}, Label: {label}, Rows selected: {len(filtered)}", lb.transform([label]).tolist())
+        for i in range(0, filtered.shape[0] - windowSize, stride):
+            newWindow = filtered.iloc[i:i + windowSize, :].astype(float)
             normalize_window(newWindow)
             newWindow = newWindow.to_numpy().tolist()
             ctgrs = lb.transform([label]).tolist()[0]
@@ -124,7 +125,7 @@ def get_dataset(params: TrainParams, fine_tune=False):
         print("Creating processed dataset. This may take a few minutes...")
 
 
-        dataDir = [
+        data_files = [
             entry for entry in os.scandir(os.path.join(params.dataset_dir, "raw_data"))
             if entry.name != ".DS_Store"
         ]
@@ -133,54 +134,107 @@ def get_dataset(params: TrainParams, fine_tune=False):
         labels = ['standing_still', 'walking_forward', 'running_forward', 'climb_up', 'climb_down']
         lb = LabelBinarizer()
         lb.fit(labels)
-        
-        X = []
-        Y = []
+        # the labels will be sorted
+        print(lb.classes_)
+        if params.split_method == 1:
+            #random split
+            X = []
+            Y = []
+            for file in data_files:
+                userBatches(file, params.num_time_steps, params.sample_step, X, Y, lb, labels)
 
-        for file in dataDir:
-            userBatches(file, params.num_time_steps, params.sample_step, X, Y, lb, labels)
+            # Convert and reshape
+            X = np.asarray(X, dtype=np.float32).reshape(-1, params.num_time_steps, params.num_features)
+            Y = np.asarray(Y, dtype=np.float32)
 
-        # Convert and reshape
-        X = np.asarray(X, dtype=np.float32).reshape(-1, params.num_time_steps, params.num_features)
-        Y = np.asarray(Y, dtype=np.float32)
+            if len(Y.shape) > 1:
+                Y_indices = np.argmax(Y, axis=1)
+            else:
+                Y_indices = Y
 
-        # Perform a 70/30 split
-        aug_X, testX, aug_y, testy = train_test_split(X, Y, test_size=0.3, random_state=42, stratify=Y)
+            # Perform a 70/30 split
+            X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.3, stratify=Y_indices)
+        elif params.split_method == 2:
+            # user based split
+            user_to_files = {}
+
+            for file_entry in data_files:
+                df = pd.read_csv(file_entry.path)
+                person_id = df['person'].iloc[0]  # assuming one person per file
+                user_to_files.setdefault(person_id, []).append(file_entry)
+
+            # Step 3: split users into train/test
+            all_users = list(user_to_files.keys())
+            train_users, test_users = train_test_split(all_users, test_size=0.3)
+            print("train_users",train_users, "test_users",test_users)
+
+            # Step 5: load batches from train/test files
+            X_train, Y_train, X_test, Y_test = [], [], [], []
+
+            for user in train_users:
+                for file_entry in user_to_files[user]:
+                    userBatches(file_entry, params.num_time_steps, params.sample_step, X_train, Y_train, lb, labels)
+
+            for user in test_users:
+                for file_entry in user_to_files[user]:
+                    userBatches(file_entry, params.num_time_steps, params.sample_step, X_test, Y_test, lb, labels)
 
         # Optional reshaping and type conversion
-        aug_X = np.asarray(aug_X, dtype=np.float32).reshape(-1, params.num_time_steps, params.num_features)
-        aug_y = np.asarray(aug_y, dtype=np.float32)
-        testX = np.asarray(testX, dtype=np.float32).reshape(-1, params.num_time_steps, params.num_features)
-        testy = np.asarray(testy, dtype=np.float32)
+        X_train = np.asarray(X_train, dtype=np.float32).reshape(-1, params.num_time_steps, params.num_features)
+        Y_train = np.asarray(Y_train, dtype=np.float32)
+        X_test = np.asarray(X_test, dtype=np.float32).reshape(-1, params.num_time_steps, params.num_features)
+        Y_test = np.asarray(Y_test, dtype=np.float32)
+        
+        
+        # Convert one-hot labels to integer class indices
+        if len(Y_train.shape) > 1:
+            train_label_indices = np.argmax(Y_train, axis=1)
+        else:
+            train_label_indices = Y_train
 
-        save_pkl(processed_file, X=aug_X, y=aug_y, XT=testX, yt=testy)
+        if len(Y_test.shape) > 1:
+            test_label_indices = np.argmax(Y_test, axis=1)
+        else:
+            test_label_indices = Y_test
+
+        # Count labels
+        import collections
+        train_label_counts = collections.Counter(train_label_indices)
+        test_label_counts = collections.Counter(test_label_indices)
+
+        # Output info
+        print(f"Number of train samples: {len(train_label_indices)}")
+        print(f"Train label distribution: {dict(train_label_counts)}")
+
+        print(f"Number of test samples: {len(test_label_indices)}")
+        print(f"Test label distribution: {dict(test_label_counts)}")
+
+        save_pkl(processed_file, X=X_train, y=Y_train, XT=X_test, yt=Y_test)
 
         if params.augmentations == 0:
-            return aug_X, aug_y, testX, testy
+            return X_train, Y_train, X_test, Y_test
     else:
         print("Loading processed dataset from " + str(processed_file))
         ds = load_pkl(processed_file)
-        aug_X = ds["X"]
-        aug_y = ds["y"]
-        testX = ds["XT"]
-        testy = ds["yt"]
+        X_train = ds["X"]
+        Y_train = ds["y"]
+        X_test = ds["XT"]
+        Y_test = ds["yt"]
 
         if params.augmentations == 0:
-            return aug_X, aug_y, testX, testy
+            return  X_train, Y_train, X_test, Y_test
 
     print("Augmenting baseline by %dx" % params.augmentations)
-    orig_X = aug_X
-    orig_testX = testX
-    orig_y = aug_y
-    orig_testy = testy
+    orig_X = X_train
+    orig_y = Y_train
 
     for i in range(params.augmentations):
-        aug_X = np.concatenate([aug_X, augment(orig_X, orig_y)])
-        aug_y = np.concatenate([aug_y, orig_y])
+        X_train = np.concatenate([X_train, augment(orig_X, orig_y)])
+        Y_train = np.concatenate([Y_train, orig_y])
         print("Augmentation pass %d complete" % i)
 
     if params.save_processed_dataset:
         print("Saving augmented dataset to " + str(aug_file))
-        save_pkl(aug_file, X=aug_X, y=aug_y, XT=orig_testX, yt=orig_testy)
+        save_pkl(aug_file, X=X_train, y=Y_train, XT=X_test, yt=Y_test)
 
-    return aug_X, aug_y, orig_testX, orig_testy
+    return X_train, Y_train, X_test, Y_test

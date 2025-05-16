@@ -18,7 +18,7 @@ class TrainParams(BaseModel):
     processed_ft_dataset: str = Field("processed_ft_dataset.pkl", description="Name of processed baseline dataset")
     augmented_ft_dataset: str = Field("augmented_ft_dataset.pkl", description="Name of processed augmented dataset")
     batch_size: int = Field(32, description="Batch Size")
-    augmentations: int = Field(8, description="Number of augmentation passes")
+    augmentations: int = Field(5, description="Number of augmentation passes")
     save_processed_dataset: bool = Field(True, description="Save processed datasets as pkls")
     epochs: int =Field(10, description="Number of training epochs")
     ft_epochs: int =Field(5, description="Number of fine-tuning epochs")
@@ -27,4 +27,5 @@ class TrainParams(BaseModel):
     show_training_plot: bool = Field(True, description="Show training statistics plots")
     train_model: bool = Field(True, description="Train the model, otherwise load existing model")
     fine_tune_model: bool = Field(False, description="Fine-tune the model, otherwise load existing model")
+    split_method: int = Field(2, description="How to split: 1, random; 2, user-based")
 
