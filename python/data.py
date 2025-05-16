@@ -68,15 +68,21 @@ def DA_TimeWarp(X, sigma=0.2):
 
     return X_new
 
-def augment(X, jitter_sigma=0.01, scaling_sigma=0.05, timewarp_sigma=0.2):
-    # Apply jitter and scaling together
-    jitter = np.random.normal(loc=0, scale=jitter_sigma, size=X.shape)
-    scale = np.random.normal(loc=1.0, scale=scaling_sigma, size=(1, X.shape[1]))
-    X_aug = X * scale + jitter
+def augment(X, labels, jitter_sigma=0.01, scaling_sigma=0.05, label_binarizer=None):
+    standing_idx = np.where(label_binarizer.classes_ == 'standing_still')[0][0]
+    print(standing_idx)
+    X_new = np.zeros(X.shape)
 
-    # Apply time warping
-    X_aug = DA_TimeWarp(X_aug, sigma=timewarp_sigma)
-    return X_aug
+    for i, orig in enumerate(X):
+        if labels[i][standing_idx]!=1:
+            jitterNoise = np.random.normal(loc=0, scale=jitter_sigma, size=orig.shape)
+            scaleNoise = np.random.normal(loc=1.0, scale=scaling_sigma, size=orig.shape)
+            X_new[i] = orig * scaleNoise + jitterNoise
+            X_new[i] = DA_TimeWarp(X_new[i])
+        else:
+            X_new[i] = DA_TimeWarp(orig)
+
+    return X_new
 
 def userBatches(file, windowSize, stride, windows, vectorizedActivities, lb, labels, down_sample_hz = -1): #processing Raw Data
     print(file)
@@ -113,6 +119,12 @@ def userBatches(file, windowSize, stride, windows, vectorizedActivities, lb, lab
 
 def get_dataset(params: TrainParams, fine_tune=False):
     aug_file = os.path.join(params.dataset_dir, params.augmented_dataset)
+    # when the button data is extracted, the labels are mapped
+    labels = ['standing_still', 'walking_forward', 'running_forward', 'climb_up', 'climb_down']
+    lb = LabelBinarizer()
+    lb.fit(labels)
+    # the labels will be sorted
+    print(lb.classes_)
 
     if aug_file and os.path.isfile(aug_file):
         print("Loading augmented dataset from " + str(aug_file))
@@ -129,13 +141,6 @@ def get_dataset(params: TrainParams, fine_tune=False):
             entry for entry in os.scandir(os.path.join(params.dataset_dir, "raw_data"))
             if entry.name != ".DS_Store"
         ]
-
-        # when the button data is extracted, the labels are mapped
-        labels = ['standing_still', 'walking_forward', 'running_forward', 'climb_up', 'climb_down']
-        lb = LabelBinarizer()
-        lb.fit(labels)
-        # the labels will be sorted
-        print(lb.classes_)
 
         if params.split_method == 1:
             #random split
@@ -168,8 +173,8 @@ def get_dataset(params: TrainParams, fine_tune=False):
             all_users = list(user_to_files.keys())
             train_users, test_users = train_test_split(all_users, test_size=0.3)
             print("train_users",train_users, "test_users",test_users)
-            #train_users = [1,3,5,7] 
-            #test_users = [2,4,6]
+            train_users = [1,3,5,7] 
+            test_users = [2,4,6]
 
             # Step 5: load batches from train/test files
             X_train, Y_train, X_test, Y_test = [], [], [], []
@@ -232,7 +237,7 @@ def get_dataset(params: TrainParams, fine_tune=False):
     orig_y = Y_train
 
     for i in range(params.augmentations):
-        X_train = np.concatenate([X_train, augment(orig_X, orig_y)])
+        X_train = np.concatenate([X_train, augment(orig_X, orig_y, label_binarizer = lb)])
         Y_train = np.concatenate([Y_train, orig_y])
         print("Augmentation pass %d complete" % i)
 
