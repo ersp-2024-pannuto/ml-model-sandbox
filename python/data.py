@@ -179,8 +179,8 @@ def get_dataset(params: TrainParams, fine_tune=False):
             all_users = list(user_to_files.keys())
             train_users, test_users = train_test_split(all_users, test_size=0.3)
             print("train_users",train_users, "test_users",test_users)
-            train_users = [1,3,5,7] 
-            test_users = [2,4,6]
+            #train_users = [1,3,5,7] 
+            #test_users = [2,4,6]
 
             # Step 5: load batches from train/test files
             X_train, Y_train, X_test, Y_test = [], [], [], []
