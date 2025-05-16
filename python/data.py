@@ -19,11 +19,13 @@ if sys.platform == "darwin":
 else:
     Adam = tf.keras.optimizers.Adam
 
+columns_to_keep = ['acc_x', 'acc_y', 'acc_z', 'gyro_x', 'gyro_y', 'gyro_z']
+
 # Normalize relative to the column mean
 def normalize_window(df):
-    for col in [['acc_x', 'acc_y', 'acc_z', 'gyro_x', 'gyro_y', 'gyro_z']]:
-        df[col] = (df[col] - df[col].mean()) / df[col].std()
-
+    cols = columns_to_keep
+    df[cols] = (df[cols] - df[cols].mean()) / df[cols].std()
+    return df
 
 ## This example using cubic spline is not the best approach to generate random curves. 
 ## You can use other approaches, e.g., Gaussian process regression, Bezier curve, etc.
@@ -100,7 +102,6 @@ def userBatches(file, windowSize, stride, windows, vectorizedActivities, lb, lab
             df = df.iloc[::down_sample_spacing].reset_index(drop=True)
         # print(f"Columns in file {file}: {df.columns.tolist()}")  # Print the column names to check
         df.columns = df.columns.str.strip()
-        columns_to_keep = ['acc_x', 'acc_y', 'acc_z', 'gyro_x', 'gyro_y', 'gyro_z']
         filtered = (
             df.where(df['label'].str.strip() == label)
               .dropna()
@@ -110,7 +111,7 @@ def userBatches(file, windowSize, stride, windows, vectorizedActivities, lb, lab
         #print(f"File: {file}, Label: {label}, Rows selected: {len(filtered)}", lb.transform([label]).tolist())
         for i in range(0, filtered.shape[0] - windowSize, stride):
             newWindow = filtered.iloc[i:i + windowSize, :].astype(float)
-            normalize_window(newWindow)
+            #newWindow = normalize_window(newWindow)
             newWindow = newWindow.to_numpy().tolist()
             ctgrs = lb.transform([label]).tolist()[0]
             vectorizedActivities.append(ctgrs)
@@ -120,7 +121,7 @@ def userBatches(file, windowSize, stride, windows, vectorizedActivities, lb, lab
 def get_dataset(params: TrainParams, fine_tune=False):
     aug_file = os.path.join(params.dataset_dir, params.augmented_dataset)
     # when the button data is extracted, the labels are mapped
-    labels = ['standing_still', 'walking_forward', 'running_forward', 'climb_up', 'climb_down']
+    labels = params.labels
     lb = LabelBinarizer()
     lb.fit(labels)
     # the labels will be sorted

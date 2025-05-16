@@ -57,7 +57,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn import metrics
 
-def plot_training_results(model, history, test_data, test_labels, output_dir="plots"):
+def plot_training_results(params, model, history, test_data, test_labels, output_dir="plots"):
     """
     Plot training results and save them as image files with unique filenames.
 
@@ -76,7 +76,13 @@ def plot_training_results(model, history, test_data, test_labels, output_dir="pl
 
     # Label configuration (expected classes)
     #EXPECTED_LABELS = ['standing_still', 'walking_forward', 'running_forward', 'climb_up', 'climb_down']
-    DISPLAY_LABELS = ['STAND', 'WALK', 'RUN', 'CLIMB UP', 'CLIMB DOWN']
+    display_mapping = {"standing_still":"STAND",
+                       "walking_forward":"WALK",
+                       "running_forward":"RUN",
+                       "climb_up":"CLIMB UP",
+                       "climb_down":"CLIMB DOWN"}
+    #DISPLAY_LABELS = ['STAND', 'WALK', 'RUN', 'CLIMB UP', 'CLIMB DOWN']
+    DISPLAY_LABELS = [display_mapping[x] for x in params.labels]
 
     # Predictions and true labels
     y_pred_test = model.predict(test_data, verbose=0)
@@ -262,7 +268,7 @@ if __name__ == "__main__":
     if params.train_model:
         model, history = train_model(params, aug_train_data, aug_train_labels, aug_test_data, aug_test_labels, fine_tune=False)
         if params.show_training_plot:
-            plot_training_results(model, history, test_data=aug_test_data, test_labels=aug_test_labels)
+            plot_training_results(params, model, history, test_data=aug_test_data, test_labels=aug_test_labels)
     else:
         model = load_existing_model(os.path.join(params.trained_model_dir, f"{params.model_name}.keras"))
 

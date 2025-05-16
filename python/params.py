@@ -2,6 +2,7 @@ import os
 import tempfile
 from enum import Enum, IntEnum
 from pathlib import Path
+from typing import List
 
 from pydantic import BaseModel, Field
 
@@ -29,4 +30,6 @@ class TrainParams(BaseModel):
     fine_tune_model: bool = Field(False, description="Fine-tune the model, otherwise load existing model")
     split_method: int = Field(2, description="How to split: 1, random; 2, user-based")
     down_sample_hz: int = Field(-1, discription="target down sampling rate")
-
+    labels: List[str] = Field(
+            default_factory=lambda: ['standing_still', 'walking_forward', 'running_forward', 'climb_up', 'climb_down'],
+            description="List of labels")
