@@ -60,26 +60,23 @@ def DistortTimesteps(X, sigma=0.2):
 
 def DA_TimeWarp(X, sigma=0.2):
     tt_new = DistortTimesteps(X, sigma)
-    X_new = np.zeros(X.shape)
+    X_new = np.zeros_like(X)
     x_range = np.arange(X.shape[0])
-    X_new[:, 0] = np.interp(x_range, tt_new[:, 0], X[:, 0])
-    X_new[:, 1] = np.interp(x_range, tt_new[:, 1], X[:, 1])
-    X_new[:, 2] = np.interp(x_range, tt_new[:, 2], X[:, 2])
-    X_new[:, 3] = np.interp(x_range, tt_new[:, 3], X[:, 3])
-    X_new[:, 4] = np.interp(x_range, tt_new[:, 4], X[:, 4])
-    X_new[:, 5] = np.interp(x_range, tt_new[:, 5], X[:, 5])
-    return X_new
 
-def augment(X, labels, jitter_sigma=0.01, scaling_sigma=0.05):
-    X_new = np.zeros(X.shape)
-
-    for i, orig in enumerate(X):
-        jitterNoise = np.random.normal(loc=0, scale=jitter_sigma, size=orig.shape)
-        scaleNoise = np.random.normal(loc=1.0, scale=scaling_sigma, size=orig.shape)
-        X_new[i] = orig * scaleNoise + jitterNoise
-        X_new[i] = DA_TimeWarp(X_new[i])
+    for d in range(X.shape[1]):
+        X_new[:, d] = np.interp(x_range, tt_new[:, d], X[:, d])
 
     return X_new
+
+def augment(X, jitter_sigma=0.01, scaling_sigma=0.05, timewarp_sigma=0.2):
+    # Apply jitter and scaling together
+    jitter = np.random.normal(loc=0, scale=jitter_sigma, size=X.shape)
+    scale = np.random.normal(loc=1.0, scale=scaling_sigma, size=(1, X.shape[1]))
+    X_aug = X * scale + jitter
+
+    # Apply time warping
+    X_aug = DA_TimeWarp(X_aug, sigma=timewarp_sigma)
+    return X_aug
 
 def userBatches(file, windowSize, stride, windows, vectorizedActivities, lb, labels, down_sample_hz = -1): #processing Raw Data
     print(file)
@@ -171,6 +168,8 @@ def get_dataset(params: TrainParams, fine_tune=False):
             all_users = list(user_to_files.keys())
             train_users, test_users = train_test_split(all_users, test_size=0.3)
             print("train_users",train_users, "test_users",test_users)
+            #train_users = [1,3,5,7] 
+            #test_users = [2,4,6]
 
             # Step 5: load batches from train/test files
             X_train, Y_train, X_test, Y_test = [], [], [], []

@@ -75,7 +75,7 @@ def plot_training_results(model, history, test_data, test_labels, output_dir="pl
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
     # Label configuration (expected classes)
-    EXPECTED_LABELS = ['standing_still', 'walking_forward', 'running_forward', 'climb_up', 'climb_down']
+    #EXPECTED_LABELS = ['standing_still', 'walking_forward', 'running_forward', 'climb_up', 'climb_down']
     DISPLAY_LABELS = ['STAND', 'WALK', 'RUN', 'CLIMB UP', 'CLIMB DOWN']
 
     # Predictions and true labels
