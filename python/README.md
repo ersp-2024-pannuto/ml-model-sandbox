@@ -28,6 +28,13 @@ counting labels in the datasets
 awk -F, 'NR==1 {for (i=1; i<=NF; i++) if ($i=="label") label_col=i} NR>1 && label_col {print $label_col}' *.csv | sort | uniq -c | sort -nr
 ```
 
+test digit recognization
+
+```bash
+python3.10 train.py --dataset-dir ./datasets_audio --split-method 1  --num-time-steps 70  --sample-step 20 --epochs 10 --labels zero one two three four five six seven eight nine
+```
+
+
 # Dataset
 
 Instead of gathering live sensor readings, we relied on a public dataset [dataset](https://www.cis.fordham.edu/wisdm/dataset.php).

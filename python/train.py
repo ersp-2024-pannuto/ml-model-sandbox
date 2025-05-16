@@ -80,7 +80,18 @@ def plot_training_results(params, model, history, test_data, test_labels, output
                        "walking_forward":"WALK",
                        "running_forward":"RUN",
                        "climb_up":"CLIMB UP",
-                       "climb_down":"CLIMB DOWN"}
+                       "climb_down":"CLIMB DOWN",
+                       "zero":"0",
+                       "one":"1",
+                       "two":"2",
+                       "three":"3",
+                       "four":"4",
+                       "five":"5",
+                       "six":"6",
+                       "seven":"7",
+                       "eight":"8",
+                       "nine":"9",
+                        }
     #DISPLAY_LABELS = ['STAND', 'WALK', 'RUN', 'CLIMB UP', 'CLIMB DOWN']
     DISPLAY_LABELS = [display_mapping[x] for x in params.labels]
 

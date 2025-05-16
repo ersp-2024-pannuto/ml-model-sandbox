@@ -71,23 +71,27 @@ def DA_TimeWarp(X, sigma=0.2):
     return X_new
 
 def augment(X, labels, jitter_sigma=0.01, scaling_sigma=0.05, label_binarizer=None):
-    standing_idx = np.where(label_binarizer.classes_ == 'standing_still')[0][0]
-    print(standing_idx)
+    if label_binarizer is not None and 'standing_still' in label_binarizer.classes_:
+        standing_idx = np.where(label_binarizer.classes_ == 'standing_still')[0][0]
+    else:
+        standing_idx = None  # Fallback if 'standing_still' not found
+
     X_new = np.zeros(X.shape)
 
     for i, orig in enumerate(X):
-        if labels[i][standing_idx]!=1:
+        is_standing = (standing_idx is not None and labels[i][standing_idx] == 1)
+
+        if not is_standing:
             jitterNoise = np.random.normal(loc=0, scale=jitter_sigma, size=orig.shape)
             scaleNoise = np.random.normal(loc=1.0, scale=scaling_sigma, size=orig.shape)
             X_new[i] = orig * scaleNoise + jitterNoise
             X_new[i] = DA_TimeWarp(X_new[i])
         else:
             X_new[i] = DA_TimeWarp(orig)
-
     return X_new
 
 def userBatches(file, windowSize, stride, windows, vectorizedActivities, lb, labels, down_sample_hz = -1): #processing Raw Data
-    print(file)
+    print(file, labels)
 
     # window array (empty) input, list of csv files
     # for loop Iterate through all CSV files of labeled data
@@ -145,10 +149,11 @@ def get_dataset(params: TrainParams, fine_tune=False):
 
         if params.split_method == 1:
             #random split
+            print("random split")
             X = []
             Y = []
-            for file in data_files:
-                userBatches(file, params.num_time_steps, params.sample_step, X, Y, lb, labels, down_sample_hz = params.down_sample_hz)
+            for f in data_files:
+                userBatches(f, params.num_time_steps, params.sample_step, X, Y, lb, labels, down_sample_hz = params.down_sample_hz)
 
             # Convert and reshape
             X = np.asarray(X, dtype=np.float32).reshape(-1, params.num_time_steps, params.num_features)
@@ -236,6 +241,7 @@ def get_dataset(params: TrainParams, fine_tune=False):
     print("Augmenting baseline by %dx" % params.augmentations)
     orig_X = X_train
     orig_y = Y_train
+    #print(X_train)
 
     for i in range(params.augmentations):
         X_train = np.concatenate([X_train, augment(orig_X, orig_y, label_binarizer = lb)])
