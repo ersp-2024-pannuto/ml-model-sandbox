@@ -7,7 +7,8 @@ import tensorflow as tf
 import numpy as np
 import pandas as pd
 from scipy.interpolate import CubicSpline      # for warping
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split,StratifiedKFold
+import pickle
 
 
 from sklearn.preprocessing import LabelBinarizer
@@ -120,6 +121,84 @@ def userBatches(file, windowSize, stride, windows, vectorizedActivities, lb, lab
             ctgrs = lb.transform([label]).tolist()[0]
             vectorizedActivities.append(ctgrs)
             windows.append(newWindow)
+
+def get_kfold_dataset(params: TrainParams):
+    processed_file = os.path.join(params.dataset_dir, params.kfold_processed_dataset)
+    augmented_file = os.path.join(params.dataset_dir, params.kfold_augmented_dataset)
+
+    lb = LabelBinarizer()
+    lb.fit(params.labels)
+
+    if not os.path.isfile(processed_file):
+        print("Creating processed dataset. This may take a few minutes...")
+        data_files = [
+            entry for entry in os.scandir(os.path.join(params.dataset_dir, "raw_data"))
+            if entry.name != ".DS_Store"
+        ]
+        X = []
+        Y = []
+        for f in data_files:
+            userBatches(f, params.num_time_steps, params.sample_step, X, Y, lb, params.labels, down_sample_hz = params.down_sample_hz)
+        # Convert and reshape
+        X = np.asarray(X, dtype=np.float32).reshape(-1, params.num_time_steps, params.num_features)
+        Y = np.asarray(Y, dtype=np.float32)
+        #save everything without split in the first two fields
+        save_pkl(processed_file, X=X, y=Y, XT=[], yt=[])
+    else:
+        ds = load_pkl(processed_file)
+        X = ds["X"]
+        Y= ds["y"]
+    
+    if not os.path.isfile(augmented_file):
+        orig_X, orig_Y = X, Y
+
+        # Step 1: Augment original dataset
+        X_aug_all = X.copy()
+        Y_aug_all = Y.copy()
+
+        for i in range(params.augmentations):
+            X_aug_all = np.concatenate([X_aug_all, augment(orig_X, orig_Y, label_binarizer = lb)])
+            Y_aug_all = np.concatenate([Y_aug_all, orig_Y])
+            print("Augmentation pass %d complete" % i)
+
+        save_pkl(augmented_file, X=X_aug_all, y=Y_aug_all, XT=[], yt=[])
+    else:
+        ds = load_pkl(augmented_file)
+        X_aug_all, Y_aug_all = ds["X"], ds["y"]
+
+    fold_file = os.path.join(params.dataset_dir, f"augmented_once_{params.n_folds}_folds.pkl")
+
+    if not os.path.isfile(fold_file):
+        if len(Y.shape) > 1:
+            Y_indices = np.argmax(Y, axis=1)
+        else:
+            Y_indices = Y
+
+        # Step 2: Stratified split only on original data
+        skf = StratifiedKFold(n_splits=params.n_folds, shuffle=True)
+        fold_data = []
+
+        for fold, (train_orig_idx, val_orig_idx) in enumerate(skf.split(X, Y_indices)):
+            print(f"\nFold {fold + 1}")
+
+            N = len(X)
+            train_full_idx = train_orig_idx.copy()
+            for i in range(1, params.augmentations + 1):
+                train_full_idx = np.concatenate([train_full_idx, train_orig_idx + i * N])
+
+            X_train, Y_train = X_aug_all[train_full_idx], Y_aug_all[train_full_idx]
+            X_val, Y_val = X[val_orig_idx], Y[val_orig_idx]  # only unaugmented
+
+            fold_data.append((X_train, Y_train, X_val, Y_val))
+
+        # Save all folds
+        with open(fold_file, "wb") as f:
+            pickle.dump(fold_data, f)
+    else:
+        with open(fold_file, "rb") as f:
+            fold_data = pickle.load(f)
+
+    return fold_data
 
 
 def get_dataset(params: TrainParams, fine_tune=False):

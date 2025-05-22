@@ -3,7 +3,7 @@ import sys
 import pydantic_argparse
 from params import TrainParams
 from utils import save_pkl, load_pkl, xxd_c_dump, set_random_seed
-from data import get_dataset
+from data import get_dataset, get_kfold_dataset
 from model import load_existing_model, define_model
 
 import tensorflow as tf
@@ -16,6 +16,8 @@ import tensorflow_model_optimization as tfmot
 import matplotlib.pyplot as plt
 from keras import regularizers as reg
 import collections
+from sklearn.metrics import classification_report, f1_score, precision_score, recall_score
+
 
 RANDOM_SEED = 42
 
@@ -252,6 +254,24 @@ def train_model(params: TrainParams, train_data, train_labels, test_data, test_l
 
     # evaluate model
     (loss, accuracy, mae) = model.evaluate(test_data, test_labels, batch_size=batch_size, verbose=verbose)
+
+    # Convert predictions to label indices
+    y_pred = model.predict(test_data, verbose=0)
+    y_pred_labels = np.argmax(y_pred, axis=1)
+    y_true_labels = np.argmax(test_labels, axis=1)
+
+    # Optional: display label names
+    label_names = params.labels
+
+    # Print classification report
+    report = classification_report(y_true_labels, y_pred_labels, target_names=label_names, digits=4)
+    print("[INFO] Classification Report:\n", report)
+
+    # Print F1/precision/recall scores
+    f1 = f1_score(y_true_labels, y_pred_labels, average='macro')
+    precision = precision_score(y_true_labels, y_pred_labels, average='macro')
+    recall = recall_score(y_true_labels, y_pred_labels, average='macro')
+    print(f"[INFO] Macro F1-score: {f1:.4f}, Precision: {precision:.4f}, Recall: {recall:.4f}")
     
     if not fine_tune:
         model.save(os.path.join(params.trained_model_dir, f"{params.model_name}.keras"))
@@ -267,28 +287,44 @@ if __name__ == "__main__":
     params = parser.parse_typed_args()
     #set_random_seed(params.seed)
 
-    # Load dataset
-    aug_train_data, aug_train_labels, aug_test_data, aug_test_labels = get_dataset(params, False)
+    if params.split_method == 1 or params.split_method == 2:
+        # Load dataset
+        aug_train_data, aug_train_labels, aug_test_data, aug_test_labels = get_dataset(params, False)
 
-    # Load Fine-tune data
-    ft_aug_train_data, ft_aug_train_labels, ft_aug_test_data, ft_aug_test_labels = get_dataset(params, True)
+        # Load Fine-tune data
+        #ft_aug_train_data, ft_aug_train_labels, ft_aug_test_data, ft_aug_test_labels = get_dataset(params, True)
 
-    # default
-    #model_name = params.base_model_name
-    # Train model
-    if params.train_model:
-        model, history = train_model(params, aug_train_data, aug_train_labels, aug_test_data, aug_test_labels, fine_tune=False)
-        if params.show_training_plot:
-            plot_training_results(params, model, history, test_data=aug_test_data, test_labels=aug_test_labels)
-    else:
-        model = load_existing_model(os.path.join(params.trained_model_dir, f"{params.model_name}.keras"))
+        # default
+        #model_name = params.base_model_name
+        # Train model
+        if params.train_model:
+            model, history = train_model(params, aug_train_data, aug_train_labels, aug_test_data, aug_test_labels, fine_tune=False)
+            if params.show_training_plot:
+                plot_training_results(params, model, history, test_data=aug_test_data, test_labels=aug_test_labels)
+        else:
+            model = load_existing_model(os.path.join(params.trained_model_dir, f"{params.model_name}.keras"))
 
-    # Fine-tune model
-    if params.fine_tune_model:
-        #model_name = params.ft_model_name
-        model, history = train_model(params, ft_aug_train_data, ft_aug_train_labels, ft_aug_test_data, ft_aug_test_labels, fine_tune=True)
-        if params.show_training_plot:
-            plot_training_results(model, history, test_data=ft_aug_test_data, test_labels=ft_aug_test_labels)
+        # Fine-tune model
+        if params.fine_tune_model:
+            #model_name = params.ft_model_name
+            model, history = train_model(params, ft_aug_train_data, ft_aug_train_labels, ft_aug_test_data, ft_aug_test_labels, fine_tune=True)
+            if params.show_training_plot:
+                plot_training_results(model, history, test_data=ft_aug_test_data, test_labels=ft_aug_test_labels)
+    if params.split_method == 3:
+        # K-fold, using all data from all users
+        fold_data = get_kfold_dataset(params)
+        # Access folds
+        for i, (X_train, Y_train, X_val, Y_val) in enumerate(fold_data):
+            print(f"Fold {i+1}:")
+            print(f"  Train shape: {X_train.shape}, {Y_train.shape}")
+            print(f"  Val shape:   {X_val.shape}, {Y_val.shape}")
+
+            # Use in training loop here
+            # model.fit(X_train, Y_train, validation_data=(X_val, Y_val), ...)
+            model, history = train_model(params, X_train, Y_train, X_val, Y_val, fine_tune=False)
+            if params.show_training_plot:
+                plot_training_results(params, model, history, test_data=X_val, test_labels=Y_val)
+
 
 """
     # Quantize and convert

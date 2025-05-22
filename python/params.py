@@ -16,6 +16,8 @@ class TrainParams(BaseModel):
     dataset_dir: Path =Field("datasets_audio/", description="Directory where datasets reside")
     processed_dataset: str = Field("processed_dataset.pkl", description="Name of processed baseline dataset")
     augmented_dataset: str = Field("augmented_dataset.pkl", description="Name of processed augmented dataset")
+    kfold_processed_dataset: str = Field("kfold_processed_dataset.pkl", description="Name of processed baseline dataset")
+    kfold_augmented_dataset: str = Field("kfold_augmented_dataset.pkl", description="Name of processed augmented dataset")
     processed_ft_dataset: str = Field("processed_ft_dataset.pkl", description="Name of processed baseline dataset")
     augmented_ft_dataset: str = Field("augmented_ft_dataset.pkl", description="Name of processed augmented dataset")
     batch_size: int = Field(32, description="Batch Size")
@@ -29,6 +31,7 @@ class TrainParams(BaseModel):
     train_model: bool = Field(True, description="Train the model, otherwise load existing model")
     fine_tune_model: bool = Field(False, description="Fine-tune the model, otherwise load existing model")
     split_method: int = Field(2, description="How to split: 1, random; 2, user-based")
+    n_folds: int = Field(5, description="Number of Folds")
     down_sample_hz: int = Field(-1, discription="target down sampling rate")
     labels: List[str] = Field(
             default_factory=lambda: ['standing_still', 'walking_forward', 'running_forward', 'climb_up', 'climb_down'],
