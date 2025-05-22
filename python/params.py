@@ -36,3 +36,9 @@ class TrainParams(BaseModel):
     labels: List[str] = Field(
             default_factory=lambda: ['standing_still', 'walking_forward', 'running_forward', 'climb_up', 'climb_down'],
             description="List of labels")
+    train_users: List[int] = Field(
+            default_factory=lambda: [],
+            description="List of train users")
+    test_users: List[int] = Field(
+            default_factory=lambda: [],
+            description="List of test users")

@@ -256,7 +256,11 @@ def get_dataset(params: TrainParams, fine_tune=False):
 
             # Step 3: split users into train/test
             all_users = list(user_to_files.keys())
-            train_users, test_users = train_test_split(all_users, test_size=0.3)
+            if len(params.train_users)>0 and len(params.test_users)>0:
+                train_users, test_users = params.train_users,params.test_users
+            else:
+                train_users, test_users = train_test_split(all_users, test_size=0.3)
+
             print("train_users",train_users, "test_users",test_users)
             #train_users = [1,3,5,7] 
             #test_users = [2,4,6]
@@ -277,8 +281,7 @@ def get_dataset(params: TrainParams, fine_tune=False):
         Y_train = np.asarray(Y_train, dtype=np.float32)
         X_test = np.asarray(X_test, dtype=np.float32).reshape(-1, params.num_time_steps, params.num_features)
         Y_test = np.asarray(Y_test, dtype=np.float32)
-        
-        
+
         # Convert one-hot labels to integer class indices
         if len(Y_train.shape) > 1:
             train_label_indices = np.argmax(Y_train, axis=1)

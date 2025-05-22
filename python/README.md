@@ -39,6 +39,10 @@ K-fold cross validation using data from all users
 python3.10 train.py --dataset-dir ./datasets_audio --split-method 3  --num-time-steps 100  --sample-step 20 --epochs 10 --n-folds 5 --labels zero one two three four five six seven eight nine
 ```
 
+to run leave one out, modify `loo.sh` user set, then
+```bash
+./loo.sh
+```
 
 # Dataset
 
