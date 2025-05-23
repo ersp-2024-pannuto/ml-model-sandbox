@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Define the full list of users
-users=(1 8)
+users=(1 8 9)
 
 # Loop over each user as the test user
 for test_user in "${users[@]}"; do

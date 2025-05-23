@@ -16,7 +16,7 @@ import tensorflow_model_optimization as tfmot
 import matplotlib.pyplot as plt
 from keras import regularizers as reg
 import collections
-from sklearn.metrics import classification_report, f1_score, precision_score, recall_score
+from sklearn.metrics import classification_report, f1_score, precision_score, recall_score, precision_recall_fscore_support, accuracy_score
 
 
 RANDOM_SEED = 42
@@ -119,7 +119,7 @@ def plot_training_results(params, model, history, test_data, test_labels, output
         plt.ylabel('True Label')
         plt.xlabel('Predicted Label')
         plt.tight_layout()
-        plt.savefig(os.path.join(output_dir, f"confusion_matrix_{timestamp}.png"))
+        plt.savefig(os.path.join(output_dir, f"confusion_matrix_{timestamp}.png"), dpi=600)
         plt.close()
     except Exception as e:
         print(f"Error creating confusion matrix: {e}")
@@ -132,7 +132,7 @@ def plot_training_results(params, model, history, test_data, test_labels, output
         plt.ylabel('True Label')
         plt.xlabel('Predicted Label')
         plt.tight_layout()
-        plt.savefig(os.path.join(output_dir, f"full_confusion_matrix_{timestamp}.png"))
+        plt.savefig(os.path.join(output_dir, f"full_confusion_matrix_{timestamp}.png"), dpi=600)
         plt.close()
 
     # Accuracy plot
@@ -142,7 +142,7 @@ def plot_training_results(params, model, history, test_data, test_labels, output
     plt.ylabel('Accuracy')
     plt.xlabel('Epoch')
     plt.legend(['Train', 'Test'], loc='upper left')
-    plt.savefig(os.path.join(output_dir, f"accuracy_{timestamp}.png"))
+    plt.savefig(os.path.join(output_dir, f"accuracy_{timestamp}.png"), dpi=600)
     plt.close()
 
     # Loss plot
@@ -152,7 +152,7 @@ def plot_training_results(params, model, history, test_data, test_labels, output
     plt.ylabel('Loss')
     plt.xlabel('Epoch')
     plt.legend(['Train', 'Test'], loc='upper left')
-    plt.savefig(os.path.join(output_dir, f"loss_{timestamp}.png"))
+    plt.savefig(os.path.join(output_dir, f"loss_{timestamp}.png"), dpi=600)
     plt.close()
 
     # MAE plot
@@ -163,7 +163,7 @@ def plot_training_results(params, model, history, test_data, test_labels, output
         plt.ylabel('MAE')
         plt.xlabel('Epoch')
         plt.legend(['Train', 'Test'], loc='upper left')
-        plt.savefig(os.path.join(output_dir, f"mae_{timestamp}.png"))
+        plt.savefig(os.path.join(output_dir, f"mae_{timestamp}.png"), dpi=600)
         plt.close()
 
 
@@ -313,6 +313,11 @@ if __name__ == "__main__":
     if params.split_method == 3:
         # K-fold, using all data from all users
         fold_data = get_kfold_dataset(params)
+
+        # Accumulate predictions and ground truths across all folds
+        all_y_true = []
+        all_y_pred = []
+        
         # Access folds
         for i, (X_train, Y_train, X_val, Y_val) in enumerate(fold_data):
             print(f"Fold {i+1}:")
@@ -324,6 +329,29 @@ if __name__ == "__main__":
             model, history = train_model(params, X_train, Y_train, X_val, Y_val, fine_tune=False)
             if params.show_training_plot:
                 plot_training_results(params, model, history, test_data=X_val, test_labels=Y_val)
+
+            # Make predictions on validation set
+            y_pred = model.predict(X_val)
+            y_pred_labels = np.argmax(y_pred, axis=1)
+            y_true_labels = np.argmax(Y_val, axis=1)
+
+            # Accumulate for final metric calculation
+            all_y_true.extend(y_true_labels)
+            all_y_pred.extend(y_pred_labels)
+
+        # Convert to numpy arrays
+        all_y_true = np.array(all_y_true)
+        all_y_pred = np.array(all_y_pred)
+
+        # Calculate metrics
+        accuracy = accuracy_score(all_y_true, all_y_pred)
+        precision, recall, f1, _ = precision_recall_fscore_support(all_y_true, all_y_pred, average='macro')
+
+        print("\n=== Cross-Validated Metrics ===")
+        print(f"Average Accuracy        : {accuracy:.4f}")
+        print(f"Average Precision (macro): {precision:.4f}")
+        print(f"Average Recall (macro)   : {recall:.4f}")
+        print(f"Average F1-score (macro) : {f1:.4f}")
 
 
 """
