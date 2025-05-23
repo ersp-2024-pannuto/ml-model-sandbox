@@ -252,6 +252,9 @@ def train_model(params: TrainParams, train_data, train_labels, test_data, test_l
     history = model.fit(train_data, train_labels, validation_data=(test_data, test_labels),
                         epochs=epochs, batch_size=batch_size, verbose=verbose, callbacks=model_callbacks,)
 
+    # === NEW LINE: Load best weights (ensures best model is evaluated) ===
+    model.load_weights(checkpoint_weight_path)
+
     # evaluate model
     (loss, accuracy, mae) = model.evaluate(test_data, test_labels, batch_size=batch_size, verbose=verbose)
 
