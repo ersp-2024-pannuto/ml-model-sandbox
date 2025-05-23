@@ -199,7 +199,7 @@ def train_model(params: TrainParams, train_data, train_labels, test_data, test_l
             restore_best_weights=True,
         )
 
-    checkpoint_weight_path = os.path.join(str(params.job_dir),"model.keras")
+    checkpoint_weight_path = os.path.join(str(params.job_dir),"model.h5")
     checkpoint = tf.keras.callbacks.ModelCheckpoint(
         filepath=checkpoint_weight_path,
         monitor="val_loss",
@@ -220,7 +220,7 @@ def train_model(params: TrainParams, train_data, train_labels, test_data, test_l
 
     # Model
     if fine_tune:
-        model = load_existing_model(os.path.join(params.trained_model_dir, f"{params.model_name}.keras"))
+        model = load_existing_model(params)
     else:
         model = define_model(n_timesteps, n_features, n_outputs)
 

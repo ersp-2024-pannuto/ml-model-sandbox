@@ -35,7 +35,7 @@ else:
 
 
 def load_existing_model(params: TrainParams):
-    return load_model(params.trained_model_dir / f"{params.model_name}.h5") 
+    return load_model(os.path.join(params.trained_model_dir,f"{params.model_name}.h5")) 
 
 
 def define_model(n_timesteps, n_features, n_outputs):
