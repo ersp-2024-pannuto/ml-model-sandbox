@@ -169,6 +169,9 @@ def plot_training_results(params, model, history, test_data, test_labels, output
 
 
 def train_model(params: TrainParams, train_data, train_labels, test_data, test_labels, fine_tune = False):
+    os.makedirs(params.trained_model_dir, exist_ok=True)
+    os.makedirs(params.job_dir, exist_ok=True)
+
     # Initialize Hyperparameters
     verbose = 1
 
