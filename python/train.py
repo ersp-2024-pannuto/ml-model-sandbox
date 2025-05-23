@@ -11,7 +11,7 @@ import numpy as np
 from sklearn import metrics
 import seaborn as sns
 from sklearn.model_selection import train_test_split
-import tensorflow_model_optimization as tfmot
+#import tensorflow_model_optimization as tfmot
 
 import matplotlib.pyplot as plt
 from keras import regularizers as reg
