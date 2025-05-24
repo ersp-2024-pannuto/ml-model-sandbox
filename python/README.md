@@ -28,6 +28,15 @@ counting labels in the datasets
 awk -F, 'NR==1 {for (i=1; i<=NF; i++) if ($i=="label") label_col=i} NR>1 && label_col {print $label_col}' *.csv | sort | uniq -c | sort -nr
 ```
 
+display labels for each csv file
+
+```bash
+for file in *.csv; do
+    echo -n "$file: "
+    awk -F, 'NR > 1 {print $2}' "$file" | sort -u | paste -sd, -
+done
+```
+
 test digit recognization
 
 ```bash
