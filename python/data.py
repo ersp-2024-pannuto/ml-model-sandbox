@@ -9,6 +9,7 @@ import pandas as pd
 from scipy.interpolate import CubicSpline      # for warping
 from sklearn.model_selection import train_test_split,StratifiedKFold
 import pickle
+from itertools import chain
 
 
 from sklearn.preprocessing import LabelBinarizer
@@ -20,10 +21,9 @@ if sys.platform == "darwin":
 else:
     Adam = tf.keras.optimizers.Adam
 
-columns_to_keep = ['acc_x', 'acc_y', 'acc_z', 'gyro_x', 'gyro_y', 'gyro_z']
 
 # Normalize relative to the column mean
-def normalize_window(df):
+def normalize_window(df, columns_to_keep):
     cols = columns_to_keep
     df[cols] = (df[cols] - df[cols].mean()) / df[cols].std()
     return df
@@ -31,34 +31,26 @@ def normalize_window(df):
 ## This example using cubic spline is not the best approach to generate random curves. 
 ## You can use other approaches, e.g., Gaussian process regression, Bezier curve, etc.
 def GenerateRandomCurves(X, sigma=0.2, knot=4):
-    xx = (np.ones((X.shape[1], 1)) * (np.arange(0, X.shape[0], (X.shape[0] - 1) / (knot + 1)))).transpose()
-    yy = np.random.normal(loc=1.0, scale=sigma, size=(knot + 2, X.shape[1]))
+    n_features = X.shape[1]
+    xx = (np.ones((n_features, 1)) * np.linspace(0, X.shape[0] - 1, knot + 2)).T
+    yy = np.random.normal(loc=1.0, scale=sigma, size=(knot + 2, n_features))
     x_range = np.arange(X.shape[0])
-    cs_x = CubicSpline(xx[:, 0], yy[:, 0])
-    cs_y = CubicSpline(xx[:, 1], yy[:, 1])
-    cs_z = CubicSpline(xx[:, 2], yy[:, 2])
-    cg_x = CubicSpline(xx[:, 3], yy[:, 3])
-    cg_y = CubicSpline(xx[:, 4], yy[:, 4])
-    cg_z = CubicSpline(xx[:, 5], yy[:, 5])
-    return np.array([cs_x(x_range), cs_y(x_range), cs_z(x_range), cg_x(x_range), cg_y(x_range), cg_z(x_range)]).transpose()
+
+    curves = []
+    for i in range(n_features):
+        cs = CubicSpline(xx[:, i], yy[:, i])
+        curves.append(cs(x_range))
+
+    return np.stack(curves, axis=1)  # Shape: (X.shape[0], X.shape[1])
 
 def DistortTimesteps(X, sigma=0.2):
-    tt = GenerateRandomCurves(X, sigma)  # Regard these samples around 1 as time intervals
-    tt_cum = np.cumsum(tt, axis=0)       # Add intervals to make a cumulative graph
-    # Make the last value to have X.shape[0]
-    t_scale = [(X.shape[0] - 1) / tt_cum[-1, 0],
-               (X.shape[0] - 1) / tt_cum[-1, 1],
-               (X.shape[0] - 1) / tt_cum[-1, 2],
-               (X.shape[0] - 1) / tt_cum[-1, 3],
-               (X.shape[0] - 1) / tt_cum[-1, 4],
-               (X.shape[0] - 1) / tt_cum[-1, 5]
-               ]
-    tt_cum[:, 0] = tt_cum[:, 0] * t_scale[0]
-    tt_cum[:, 1] = tt_cum[:, 1] * t_scale[1]
-    tt_cum[:, 2] = tt_cum[:, 2] * t_scale[2]
-    tt_cum[:, 3] = tt_cum[:, 3] * t_scale[3]
-    tt_cum[:, 4] = tt_cum[:, 4] * t_scale[4]
-    tt_cum[:, 5] = tt_cum[:, 5] * t_scale[5]
+    tt = GenerateRandomCurves(X, sigma)  # (X.shape[0], X.shape[1])
+    tt_cum = np.cumsum(tt, axis=0)       # cumulative sum across time
+
+    # Scale each dimension so the last time step is aligned with the input length
+    t_scale = (X.shape[0] - 1) / tt_cum[-1, :]
+    tt_cum = tt_cum * t_scale
+
     return tt_cum
 
 def DA_TimeWarp(X, sigma=0.2):
@@ -91,7 +83,7 @@ def augment(X, labels, jitter_sigma=0.01, scaling_sigma=0.05, label_binarizer=No
             X_new[i] = DA_TimeWarp(orig)
     return X_new
 
-def userBatches(file, windowSize, stride, windows, vectorizedActivities, lb, labels, down_sample_hz = -1): #processing Raw Data
+def userBatches(columns_to_keep, file, windowSize, stride, windows, vectorizedActivities, lb, labels, down_sample_hz = -1): #processing Raw Data
     print(file, labels)
 
     # window array (empty) input, list of csv files
@@ -116,7 +108,7 @@ def userBatches(file, windowSize, stride, windows, vectorizedActivities, lb, lab
         #print(f"File: {file}, Label: {label}, Rows selected: {len(filtered)}", lb.transform([label]).tolist())
         for i in range(0, filtered.shape[0] - windowSize, stride):
             newWindow = filtered.iloc[i:i + windowSize, :].astype(float)
-            #newWindow = normalize_window(newWindow)
+            #newWindow = normalize_window(newWindow, columns_to_keep)
             newWindow = newWindow.to_numpy().tolist()
             ctgrs = lb.transform([label]).tolist()[0]
             vectorizedActivities.append(ctgrs)
@@ -133,15 +125,30 @@ def get_kfold_dataset(params: TrainParams):
         print("Creating processed dataset. This may take a few minutes...")
         data_files = [
             entry for entry in os.scandir(os.path.join(params.dataset_dir, "raw_data"))
-            if entry.name != ".DS_Store"
+            if entry.name != ".DS_Store" and not entry.name.endswith(".sh")
         ]
+        # user based split
+        user_to_files = {}
+
+        for file_entry in data_files:
+            df = pd.read_csv(file_entry.path)
+            person_id = df['person'].iloc[0]  # assuming one person per file
+            user_to_files.setdefault(person_id, []).append(file_entry)
+
+        if len(params.users)>0:
+            data_files = [user_to_files[x] for x in params.users]
+            # flatten the nested list
+            data_files = list(chain.from_iterable(data_files))
+            print("load users", data_files)
+
         X = []
         Y = []
         for f in data_files:
-            userBatches(f, params.num_time_steps, params.sample_step, X, Y, lb, params.labels, down_sample_hz = params.down_sample_hz)
+            userBatches(params.columns_to_keep, f, params.num_time_steps, params.sample_step, X, Y, lb, params.labels, down_sample_hz = params.down_sample_hz)
         # Convert and reshape
         X = np.asarray(X, dtype=np.float32).reshape(-1, params.num_time_steps, params.num_features)
         Y = np.asarray(Y, dtype=np.float32)
+        print(f"processed: len X {len(X)} len Y {len(Y)}")
         #save everything without split in the first two fields
         save_pkl(processed_file, X=X, y=Y, XT=[], yt=[])
     else:
@@ -167,6 +174,7 @@ def get_kfold_dataset(params: TrainParams):
         X_aug_all, Y_aug_all = ds["X"], ds["y"]
 
     fold_file = os.path.join(params.dataset_dir, f"augmented_once_{params.n_folds}_folds.pkl")
+    print(f"len X {len(X)} len Y {len(Y)}")
 
     if not os.path.isfile(fold_file):
         if len(Y.shape) > 1:
@@ -223,7 +231,7 @@ def get_dataset(params: TrainParams, fine_tune=False):
 
         data_files = [
             entry for entry in os.scandir(os.path.join(params.dataset_dir, "raw_data"))
-            if entry.name != ".DS_Store"
+            if entry.name != ".DS_Store" and not entry.name.endswith(".sh")
         ]
 
         if params.split_method == 1:
@@ -232,7 +240,7 @@ def get_dataset(params: TrainParams, fine_tune=False):
             X = []
             Y = []
             for f in data_files:
-                userBatches(f, params.num_time_steps, params.sample_step, X, Y, lb, labels, down_sample_hz = params.down_sample_hz)
+                userBatches(params.columns_to_keep, f, params.num_time_steps, params.sample_step, X, Y, lb, labels, down_sample_hz = params.down_sample_hz)
 
             # Convert and reshape
             X = np.asarray(X, dtype=np.float32).reshape(-1, params.num_time_steps, params.num_features)
@@ -256,9 +264,12 @@ def get_dataset(params: TrainParams, fine_tune=False):
 
             # Step 3: split users into train/test
             all_users = list(user_to_files.keys())
+            print(params.train_users, params.test_users)
             if len(params.train_users)>0 and len(params.test_users)>0:
+                print("train users and test users: specified")
                 train_users, test_users = params.train_users,params.test_users
             else:
+                print("train users and test users: random split")
                 train_users, test_users = train_test_split(all_users, test_size=0.3)
 
             print("train_users",train_users, "test_users",test_users)
@@ -270,11 +281,11 @@ def get_dataset(params: TrainParams, fine_tune=False):
 
             for user in train_users:
                 for file_entry in user_to_files[user]:
-                    userBatches(file_entry, params.num_time_steps, params.sample_step, X_train, Y_train, lb, labels, down_sample_hz = params.down_sample_hz)
+                    userBatches(params.columns_to_keep, file_entry, params.num_time_steps, params.sample_step, X_train, Y_train, lb, labels, down_sample_hz = params.down_sample_hz)
 
             for user in test_users:
                 for file_entry in user_to_files[user]:
-                    userBatches(file_entry, params.num_time_steps, params.sample_step, X_test, Y_test, lb, labels, down_sample_hz = params.down_sample_hz)
+                    userBatches(params.columns_to_keep, file_entry, params.num_time_steps, params.sample_step, X_test, Y_test, lb, labels, down_sample_hz = params.down_sample_hz)
 
         # Optional reshaping and type conversion
         X_train = np.asarray(X_train, dtype=np.float32).reshape(-1, params.num_time_steps, params.num_features)
