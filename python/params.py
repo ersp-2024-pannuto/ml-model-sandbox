@@ -36,9 +36,16 @@ class TrainParams(BaseModel):
     labels: List[str] = Field(
             default_factory=lambda: ['standing_still', 'walking_forward', 'running_forward', 'climb_up', 'climb_down'],
             description="List of labels")
+    users: List[int] = Field(
+            default_factory=lambda: [],
+            description="List of selected users (use their data as dataset)")
     train_users: List[int] = Field(
             default_factory=lambda: [],
             description="List of train users")
     test_users: List[int] = Field(
             default_factory=lambda: [],
             description="List of test users")
+    model_type: str = Field("cnn", description="architecture")
+    columns_to_keep: List[str] = Field(
+            default_factory=lambda: ['acc_x', 'acc_y', 'acc_z', 'gyro_x', 'gyro_y', 'gyro_z'],
+            description="List of columns used")

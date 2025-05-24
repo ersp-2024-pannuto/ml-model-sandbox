@@ -4,7 +4,7 @@ import pydantic_argparse
 from params import TrainParams
 from utils import save_pkl, load_pkl, xxd_c_dump, set_random_seed
 from data import get_dataset, get_kfold_dataset
-from model import load_existing_model, define_model
+from model import load_existing_model, define_model,define_model_cnn_lstm, define_model_gru
 
 import tensorflow as tf
 import numpy as np
@@ -83,6 +83,11 @@ def plot_training_results(params, model, history, test_data, test_labels, output
                        "running_forward":"RUN",
                        "climb_up":"CLIMB UP",
                        "climb_down":"CLIMB DOWN",
+                       "Standing":"STAND",
+                       "Walking":"WALK",
+                       "Jogging":"RUN",
+                       "Upstairs":"CLIMB UP",
+                       "Downstairs":"CLIMB DOWN",
                        "zero":"0",
                        "one":"1",
                        "two":"2",
@@ -225,7 +230,12 @@ def train_model(params: TrainParams, train_data, train_labels, test_data, test_l
     if fine_tune:
         model = load_existing_model(params)
     else:
-        model = define_model(n_timesteps, n_features, n_outputs)
+        if params.model_type == "cnn":
+            model = define_model(n_timesteps, n_features, n_outputs)
+        elif params.model_type == "cnn_lstm":
+            model = define_model_cnn_lstm(n_timesteps, n_features, n_outputs)
+        elif params.model_type == "gru":
+            model = define_model_gru(n_timesteps, n_features, n_outputs)
 
     model.summary()
 
