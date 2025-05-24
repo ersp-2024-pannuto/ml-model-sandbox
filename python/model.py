@@ -25,6 +25,7 @@ from keras.layers import Conv2D
 from keras.layers import MaxPooling1D
 from keras.layers import MaxPooling2D
 from keras.layers import LSTM
+from keras.layers import GRU
 from keras.layers import Bidirectional
 from keras import regularizers as reg
 
@@ -58,6 +59,57 @@ def define_model(n_timesteps, n_features, n_outputs):
 
     return model
 
+def define_model_gru(n_timesteps, n_features, n_outputs):
+    model = Sequential()
+    
+    # Convolutional feature extraction
+    model.add(Conv1D(filters=16, kernel_size=3, activation='relu', input_shape=(n_timesteps, n_features)))
+    model.add(Conv1D(filters=32, kernel_size=3, activation='relu', padding='same', kernel_regularizer=reg.l2(0.15)))
+    model.add(Dropout(0.2))
+    model.add(Conv1D(filters=32, kernel_size=3, activation='relu', padding='same', kernel_regularizer=reg.l2(0.15)))
+    model.add(Dropout(0.3))
+    model.add(Conv1D(filters=128, kernel_size=3, activation='relu', padding='same', kernel_regularizer=reg.l2(0.15)))
+    model.add(Dropout(0.4))
+    model.add(MaxPooling1D(pool_size=2))  # Reduces temporal dimension
+    
+    # Recurrent layer
+    model.add(GRU(64, return_sequences=False))  # Can tune 64 as needed
+    
+    # Output layer
+    model.add(Dense(n_outputs, activation='softmax'))
+
+    # Compile
+    model.compile(
+        loss='categorical_crossentropy',
+        optimizer=Adam(learning_rate=5e-4, beta_1=0.9, beta_2=0.98, epsilon=1e-9),
+        metrics=['accuracy', 'mean_absolute_error']
+    )
+
+    return model
+
+def define_model_cnn_lstm(n_timesteps, n_features, n_outputs):
+    model = Sequential()
+
+    # Convolutional feature extraction
+    model.add(Conv1D(filters=16, kernel_size=3, activation='relu', input_shape=(n_timesteps, n_features)))
+    model.add(Conv1D(filters=32, kernel_size=3, activation='relu', padding='same', kernel_regularizer=reg.l2(0.15)))
+    model.add(Dropout(0.2))
+    model.add(Conv1D(filters=32, kernel_size=3, activation='relu', padding='same', kernel_regularizer=reg.l2(0.15)))
+    model.add(Dropout(0.3))
+    model.add(Conv1D(filters=128, kernel_size=3, activation='relu', padding='same', kernel_regularizer=reg.l2(0.15)))
+    model.add(Dropout(0.4))
+    model.add(MaxPooling1D(pool_size=2))
+
+    # LSTM over time-distributed features
+    model.add(LSTM(64))  # You can try increasing the number of units
+    model.add(Dense(n_outputs, activation='softmax'))
+
+    model.compile(
+        loss='categorical_crossentropy', 
+        optimizer=Adam(learning_rate=5e-4, beta_1=0.9, beta_2=0.98, epsilon=1e-9), 
+        metrics=['accuracy', 'mean_absolute_error'])
+
+    return model
 
 def create_parser():
     """Create CLI argument parser
